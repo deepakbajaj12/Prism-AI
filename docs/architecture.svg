@@ -1,0 +1,256 @@
+<svg width="1200" height="680" viewBox="0 0 1200 680" xmlns="http://www.w3.org/2000/svg" font-family="'Courier New', monospace">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="100%" stop-color="#111111"/>
+    </linearGradient>
+    <linearGradient id="headerGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ff4e00"/>
+      <stop offset="100%" stop-color="#ff7a00"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#ff4e00" opacity="0.6"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#3b82f6" opacity="0.6"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#10b981" opacity="0.6"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="680" fill="url(#bgGrad)"/>
+
+  <!-- Border -->
+  <rect x="1" y="1" width="1198" height="678" fill="none" stroke="#ff4e00" stroke-width="1" opacity="0.3" rx="8"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="1200" height="60" fill="url(#headerGrad)" opacity="0.9" rx="8"/>
+  <rect x="0" y="40" width="1200" height="20" fill="url(#headerGrad)" opacity="0.9"/>
+  <text x="36" y="38" font-size="22" font-weight="bold" fill="white" letter-spacing="3">PRISM AI — SYSTEM ARCHITECTURE</text>
+  <text x="900" y="38" font-size="11" fill="rgba(255,255,255,0.7)" letter-spacing="2">GEMINI LIVE AGENT CHALLENGE 2026</text>
+
+  <!-- ── LAYER LABELS ── -->
+  <text x="36" y="90" font-size="10" fill="#ff4e00" opacity="0.7" letter-spacing="3">USER BROWSER</text>
+  <text x="36" y="270" font-size="10" fill="#3b82f6" opacity="0.7" letter-spacing="3">GOOGLE AI SDK LAYER</text>
+  <text x="36" y="430" font-size="10" fill="#10b981" opacity="0.7" letter-spacing="3">GOOGLE CLOUD PLATFORM</text>
+  <text x="36" y="565" font-size="10" fill="#a78bfa" opacity="0.7" letter-spacing="3">GEMINI MODEL LAYER</text>
+
+  <!-- Layer separator lines -->
+  <line x1="20" y1="100" x2="1180" y2="100" stroke="#ff4e00" stroke-width="0.5" opacity="0.2" stroke-dasharray="4,4"/>
+  <line x1="20" y1="280" x2="1180" y2="280" stroke="#3b82f6" stroke-width="0.5" opacity="0.2" stroke-dasharray="4,4"/>
+  <line x1="20" y1="440" x2="1180" y2="440" stroke="#10b981" stroke-width="0.5" opacity="0.2" stroke-dasharray="4,4"/>
+  <line x1="20" y1="578" x2="1180" y2="578" stroke="#a78bfa" stroke-width="0.5" opacity="0.2" stroke-dasharray="4,4"/>
+
+  <!-- ══ BOX HELPER TEMPLATE ══ -->
+  <!-- USER LAYER boxes -->
+
+  <!-- React SPA -->
+  <rect x="36" y="110" width="200" height="140" rx="8" fill="#1a1a1a" stroke="#ff4e00" stroke-width="1" opacity="0.9"/>
+  <rect x="36" y="110" width="200" height="28" rx="8" fill="#ff4e00" opacity="0.15"/>
+  <text x="56" y="129" font-size="11" font-weight="bold" fill="#ff4e00" letter-spacing="1">REACT / VITE SPA</text>
+  <text x="56" y="152" font-size="10" fill="#888">TypeScript 5.8</text>
+  <text x="56" y="168" font-size="10" fill="#888">Tailwind CSS v4</text>
+  <text x="56" y="184" font-size="10" fill="#888">Framer Motion</text>
+  <text x="56" y="200" font-size="10" fill="#888">react-markdown</text>
+  <text x="56" y="216" font-size="10" fill="#888">lucide-react</text>
+  <text x="56" y="236" font-size="9" fill="#ff4e00" opacity="0.6">FRONTEND</text>
+
+  <!-- Live Agent component -->
+  <rect x="266" y="110" width="190" height="140" rx="8" fill="#1a1a1a" stroke="#ff4e00" stroke-width="1" opacity="0.9"/>
+  <rect x="266" y="110" width="190" height="28" rx="8" fill="#ff4e00" opacity="0.15"/>
+  <text x="286" y="129" font-size="11" font-weight="bold" fill="#ff4e00" letter-spacing="1">LIVE AGENT</text>
+  <text x="286" y="152" font-size="10" fill="#888">Web Audio API</text>
+  <text x="286" y="168" font-size="10" fill="#888">16kHz PCM Capture</text>
+  <text x="286" y="184" font-size="10" fill="#888">VAD Detection</text>
+  <text x="286" y="200" font-size="10" fill="#888">24kHz Playback</text>
+  <text x="286" y="216" font-size="10" fill="#888">WebSocket Stream</text>
+  <text x="286" y="236" font-size="9" fill="#ff4e00" opacity="0.6">REAL-TIME VOICE</text>
+
+  <!-- Storyboard Creator -->
+  <rect x="486" y="110" width="200" height="140" rx="8" fill="#1a1a1a" stroke="#ff4e00" stroke-width="1.5" opacity="0.9"/>
+  <rect x="486" y="110" width="200" height="28" rx="8" fill="#ff4e00" opacity="0.25"/>
+  <text x="506" y="129" font-size="11" font-weight="bold" fill="#ff4e00" letter-spacing="1">STORYBOARD CREATOR</text>
+  <text x="506" y="152" font-size="10" fill="#ccc">★ INTERLEAVED OUTPUT</text>
+  <text x="506" y="168" font-size="10" fill="#888">TEXT + IMAGE Stream</text>
+  <text x="506" y="184" font-size="10" fill="#888">Async Generator</text>
+  <text x="506" y="200" font-size="10" fill="#888">Progressive Render</text>
+  <text x="506" y="216" font-size="10" fill="#888">HTML Export</text>
+  <text x="506" y="236" font-size="9" fill="#ff4e00" opacity="0.8">★ HACKATHON FEATURE</text>
+
+  <!-- Media Gallery -->
+  <rect x="716" y="110" width="190" height="140" rx="8" fill="#1a1a1a" stroke="#ff4e00" stroke-width="1" opacity="0.9"/>
+  <rect x="716" y="110" width="190" height="28" rx="8" fill="#ff4e00" opacity="0.15"/>
+  <text x="736" y="129" font-size="11" font-weight="bold" fill="#ff4e00" letter-spacing="1">MEDIA GALLERY</text>
+  <text x="736" y="152" font-size="10" fill="#888">Image Display</text>
+  <text x="736" y="168" font-size="10" fill="#888">Video Playback</text>
+  <text x="736" y="184" font-size="10" fill="#888">Mood Board</text>
+  <text x="736" y="200" font-size="10" fill="#888">Brief Generator</text>
+  <text x="736" y="216" font-size="10" fill="#888">Download Assets</text>
+  <text x="736" y="236" font-size="9" fill="#ff4e00" opacity="0.6">CREATIVE STUDIO</text>
+
+  <!-- Brand Voice / Controls -->
+  <rect x="936" y="110" width="228" height="140" rx="8" fill="#1a1a1a" stroke="#ff4e00" stroke-width="1" opacity="0.9"/>
+  <rect x="936" y="110" width="228" height="28" rx="8" fill="#ff4e00" opacity="0.15"/>
+  <text x="956" y="129" font-size="11" font-weight="bold" fill="#ff4e00" letter-spacing="1">SIDEBAR CONTROLS</text>
+  <text x="956" y="152" font-size="10" fill="#888">Brand Voice Selector</text>
+  <text x="956" y="168" font-size="10" fill="#888">Manual Generation</text>
+  <text x="956" y="184" font-size="10" fill="#888">Creative Tasks (Todo)</text>
+  <text x="956" y="200" font-size="10" fill="#888">Theme Toggle</text>
+  <text x="956" y="216" font-size="10" fill="#888">Mood Board Modal</text>
+  <text x="956" y="236" font-size="9" fill="#ff4e00" opacity="0.6">UX LAYER</text>
+
+  <!-- ── SDK LAYER ── -->
+
+  <!-- GenAI SDK -->
+  <rect x="36" y="290" width="220" height="120" rx="8" fill="#1a1a2e" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+  <rect x="36" y="290" width="220" height="28" rx="8" fill="#3b82f6" opacity="0.15"/>
+  <text x="56" y="309" font-size="11" font-weight="bold" fill="#3b82f6" letter-spacing="1">@GOOGLE/GENAI SDK</text>
+  <text x="56" y="332" font-size="10" fill="#888">v1.29.0</text>
+  <text x="56" y="348" font-size="10" fill="#888">Live API (WebSockets)</text>
+  <text x="56" y="364" font-size="10" fill="#888">generateContentStream</text>
+  <text x="56" y="380" font-size="10" fill="#888">generateVideos + polling</text>
+  <text x="56" y="398" font-size="9" fill="#3b82f6" opacity="0.6">CLIENT-SIDE / BROWSER</text>
+
+  <!-- Gemini Service -->
+  <rect x="286" y="290" width="220" height="120" rx="8" fill="#1a1a2e" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+  <rect x="286" y="290" width="220" height="28" rx="8" fill="#3b82f6" opacity="0.15"/>
+  <text x="306" y="309" font-size="11" font-weight="bold" fill="#3b82f6" letter-spacing="1">GEMINI SERVICE</text>
+  <text x="306" y="332" font-size="10" fill="#888">generateImage()</text>
+  <text x="306" y="348" font-size="10" fill="#888">generateVideo()</text>
+  <text x="306" y="364" font-size="10" fill="#888">generateBrief()</text>
+  <text x="306" y="380" font-size="10" fill="#ccc">★ generateStoryboard()</text>
+  <text x="306" y="398" font-size="9" fill="#3b82f6" opacity="0.6">SINGLETON SERVICE CLASS</text>
+
+  <!-- Express Backend -->
+  <rect x="536" y="290" width="220" height="120" rx="8" fill="#1a1a2e" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+  <rect x="536" y="290" width="220" height="28" rx="8" fill="#3b82f6" opacity="0.15"/>
+  <text x="556" y="309" font-size="11" font-weight="bold" fill="#3b82f6" letter-spacing="1">EXPRESS SERVER</text>
+  <text x="556" y="332" font-size="10" fill="#888">GET/POST /api/projects</text>
+  <text x="556" y="348" font-size="10" fill="#888">GET/POST /api/media</text>
+  <text x="556" y="364" font-size="10" fill="#888">GET/POST /api/storyboards</text>
+  <text x="556" y="380" font-size="10" fill="#888">Static SPA fallback</text>
+  <text x="556" y="398" font-size="9" fill="#3b82f6" opacity="0.6">NODE.JS BACKEND</text>
+
+  <!-- SQLite DB -->
+  <rect x="786" y="290" width="178" height="120" rx="8" fill="#1a1a2e" stroke="#3b82f6" stroke-width="1" opacity="0.9"/>
+  <rect x="786" y="290" width="178" height="28" rx="8" fill="#3b82f6" opacity="0.15"/>
+  <text x="806" y="309" font-size="11" font-weight="bold" fill="#3b82f6" letter-spacing="1">SQLITE (WAL)</text>
+  <text x="806" y="332" font-size="10" fill="#888">projects table</text>
+  <text x="806" y="348" font-size="10" fill="#888">media table</text>
+  <text x="806" y="364" font-size="10" fill="#888">storyboards table</text>
+  <text x="806" y="380" font-size="10" fill="#888">better-sqlite3</text>
+  <text x="806" y="398" font-size="9" fill="#3b82f6" opacity="0.6">PERSISTENCE LAYER</text>
+
+  <!-- ── GOOGLE CLOUD LAYER ── -->
+
+  <!-- Cloud Run -->
+  <rect x="36" y="450" width="240" height="100" rx="8" fill="#0d2018" stroke="#10b981" stroke-width="1" opacity="0.9"/>
+  <rect x="36" y="450" width="240" height="28" rx="8" fill="#10b981" opacity="0.15"/>
+  <text x="56" y="469" font-size="11" font-weight="bold" fill="#10b981" letter-spacing="1">CLOUD RUN</text>
+  <text x="56" y="492" font-size="10" fill="#888">Managed container runtime</text>
+  <text x="56" y="508" font-size="10" fill="#888">Auto-scaling (0–10 instances)</text>
+  <text x="56" y="524" font-size="10" fill="#888">PORT=8080 / HTTPS</text>
+  <text x="56" y="540" font-size="9" fill="#10b981" opacity="0.6">us-central1</text>
+
+  <!-- Artifact Registry -->
+  <rect x="306" y="450" width="220" height="100" rx="8" fill="#0d2018" stroke="#10b981" stroke-width="1" opacity="0.9"/>
+  <rect x="306" y="450" width="220" height="28" rx="8" fill="#10b981" opacity="0.15"/>
+  <text x="326" y="469" font-size="11" font-weight="bold" fill="#10b981" letter-spacing="1">ARTIFACT REGISTRY</text>
+  <text x="326" y="492" font-size="10" fill="#888">Docker image store</text>
+  <text x="326" y="508" font-size="10" fill="#888">prism-ai/prism-ai:latest</text>
+  <text x="326" y="524" font-size="10" fill="#888">Cloud Build CI/CD</text>
+  <text x="326" y="540" font-size="9" fill="#10b981" opacity="0.6">CONTAINER REGISTRY</text>
+
+  <!-- Secret Manager -->
+  <rect x="556" y="450" width="200" height="100" rx="8" fill="#0d2018" stroke="#10b981" stroke-width="1" opacity="0.9"/>
+  <rect x="556" y="450" width="200" height="28" rx="8" fill="#10b981" opacity="0.15"/>
+  <text x="576" y="469" font-size="11" font-weight="bold" fill="#10b981" letter-spacing="1">SECRET MANAGER</text>
+  <text x="576" y="492" font-size="10" fill="#888">gemini-api-key</text>
+  <text x="576" y="508" font-size="10" fill="#888">Injected at runtime</text>
+  <text x="576" y="524" font-size="10" fill="#888">Terraform-managed</text>
+  <text x="576" y="540" font-size="9" fill="#10b981" opacity="0.6">IAM-PROTECTED</text>
+
+  <!-- Cloud Build -->
+  <rect x="786" y="450" width="178" height="100" rx="8" fill="#0d2018" stroke="#10b981" stroke-width="1" opacity="0.9"/>
+  <rect x="786" y="450" width="178" height="28" rx="8" fill="#10b981" opacity="0.15"/>
+  <text x="806" y="469" font-size="11" font-weight="bold" fill="#10b981" letter-spacing="1">CLOUD BUILD</text>
+  <text x="806" y="492" font-size="10" fill="#888">cloudbuild.yaml</text>
+  <text x="806" y="508" font-size="10" fill="#888">On git push → deploy</text>
+  <text x="806" y="524" font-size="10" fill="#888">Automated pipeline</text>
+  <text x="806" y="540" font-size="9" fill="#10b981" opacity="0.6">CI/CD</text>
+
+  <!-- ── GEMINI MODEL LAYER ── -->
+  <!-- Live API -->
+  <rect x="36" y="588" width="200" height="72" rx="8" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1"/>
+  <rect x="36" y="588" width="200" height="24" rx="8" fill="#a78bfa" opacity="0.15"/>
+  <text x="56" y="605" font-size="10" font-weight="bold" fill="#a78bfa" letter-spacing="1">GEMINI LIVE API</text>
+  <text x="56" y="622" font-size="9" fill="#888">gemini-2.5-flash-native-audio</text>
+  <text x="56" y="638" font-size="9" fill="#888">Real-time bidirectional audio</text>
+  <text x="56" y="652" font-size="9" fill="#a78bfa" opacity="0.6">VOICE ↔ VOICE</text>
+
+  <!-- Interleaved model -->
+  <rect x="266" y="588" width="220" height="72" rx="8" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1.5"/>
+  <rect x="266" y="588" width="220" height="24" rx="8" fill="#a78bfa" opacity="0.25"/>
+  <text x="286" y="605" font-size="10" font-weight="bold" fill="#a78bfa" letter-spacing="1">★ IMAGE GEN (INTERLEAVED)</text>
+  <text x="286" y="622" font-size="9" fill="#ccc">gemini-2.0-flash-preview-image</text>
+  <text x="286" y="638" font-size="9" fill="#888">responseModalities:[TEXT,IMAGE]</text>
+  <text x="286" y="652" font-size="9" fill="#a78bfa" opacity="0.8">★ INTERLEAVED STREAM</text>
+
+  <!-- Image model -->
+  <rect x="516" y="588" width="200" height="72" rx="8" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1"/>
+  <rect x="516" y="588" width="200" height="24" rx="8" fill="#a78bfa" opacity="0.15"/>
+  <text x="536" y="605" font-size="10" font-weight="bold" fill="#a78bfa" letter-spacing="1">IMAGE GENERATION</text>
+  <text x="536" y="622" font-size="9" fill="#888">gemini-2.5-flash-image</text>
+  <text x="536" y="638" font-size="9" fill="#888">16:9 aspect ratio</text>
+  <text x="536" y="652" font-size="9" fill="#a78bfa" opacity="0.6">STATIC IMAGE</text>
+
+  <!-- Veo -->
+  <rect x="746" y="588" width="200" height="72" rx="8" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1"/>
+  <rect x="746" y="588" width="200" height="24" rx="8" fill="#a78bfa" opacity="0.15"/>
+  <text x="766" y="605" font-size="10" font-weight="bold" fill="#a78bfa" letter-spacing="1">VEO 3.1 VIDEO GEN</text>
+  <text x="766" y="622" font-size="9" fill="#888">veo-3.1-fast-generate-preview</text>
+  <text x="766" y="638" font-size="9" fill="#888">720p / async polling</text>
+  <text x="766" y="652" font-size="9" fill="#a78bfa" opacity="0.6">VIDEO CLIP</text>
+
+  <!-- Brief model -->
+  <rect x="976" y="588" width="188" height="72" rx="8" fill="#1a0a2e" stroke="#a78bfa" stroke-width="1"/>
+  <rect x="976" y="588" width="188" height="24" rx="8" fill="#a78bfa" opacity="0.15"/>
+  <text x="996" y="605" font-size="10" font-weight="bold" fill="#a78bfa" letter-spacing="1">CREATIVE BRIEF</text>
+  <text x="996" y="622" font-size="9" fill="#888">gemini-3-flash-preview</text>
+  <text x="996" y="638" font-size="9" fill="#888">Structured markdown output</text>
+  <text x="996" y="652" font-size="9" fill="#a78bfa" opacity="0.6">TEXT GENERATION</text>
+
+  <!-- ── ARROWS ── -->
+  <!-- Browser → SDK -->
+  <line x1="136" y1="250" x2="136" y2="290" stroke="#ff4e00" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
+  <line x1="361" y1="250" x2="361" y2="290" stroke="#3b82f6" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowBlue)"/>
+  <line x1="586" y1="250" x2="586" y2="290" stroke="#3b82f6" stroke-width="1.5" opacity="0.5" marker-end="url(#arrowBlue)"/>
+
+  <!-- SDK → Cloud -->
+  <line x1="156" y1="410" x2="156" y2="450" stroke="#3b82f6" stroke-width="1.5" opacity="0.4" marker-end="url(#arrowBlue)"/>
+  <line x1="646" y1="410" x2="646" y2="450" stroke="#10b981" stroke-width="1.5" opacity="0.4" marker-end="url(#arrowGreen)"/>
+  <line x1="875" y1="410" x2="875" y2="450" stroke="#10b981" stroke-width="1.5" opacity="0.4" marker-end="url(#arrowGreen)"/>
+
+  <!-- Cloud → Models -->
+  <line x1="156" y1="550" x2="136" y2="588" stroke="#10b981" stroke-width="1.5" opacity="0.4" marker-end="url(#arrowGreen)"/>
+  <line x1="361" y1="550" x2="376" y2="588" stroke="#a78bfa" stroke-width="1.5" opacity="0.5" marker-end="url(#arrow)"/>
+
+  <!-- Legend -->
+  <rect x="990" y="295" width="174" height="130" rx="6" fill="#111" stroke="#333" stroke-width="1"/>
+  <text x="1010" y="314" font-size="10" font-weight="bold" fill="#888" letter-spacing="2">LEGEND</text>
+  <line x1="1010" y1="328" x2="1040" y2="328" stroke="#ff4e00" stroke-width="2"/>
+  <text x="1048" y="332" font-size="9" fill="#888">UI Components</text>
+  <line x1="1010" y1="348" x2="1040" y2="348" stroke="#3b82f6" stroke-width="2"/>
+  <text x="1048" y="352" font-size="9" fill="#888">SDK / Backend</text>
+  <line x1="1010" y1="368" x2="1040" y2="368" stroke="#10b981" stroke-width="2"/>
+  <text x="1048" y="372" font-size="9" fill="#888">Cloud Services</text>
+  <line x1="1010" y1="388" x2="1040" y2="388" stroke="#a78bfa" stroke-width="2"/>
+  <text x="1048" y="392" font-size="9" fill="#888">Gemini Models</text>
+  <text x="1010" y="414" font-size="9" fill="#ff4e00" opacity="0.8">★ = Hackathon feature</text>
+</svg>

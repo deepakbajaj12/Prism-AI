@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Image as ImageIcon, Video as VideoIcon, Plus, History, Settings, Info, AlertCircle, FileText, X, Sun, Moon } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Video as VideoIcon, Plus, History, Settings, Info, AlertCircle, FileText, X, Sun, Moon, BookOpen, Mic } from 'lucide-react';
 import { LiveAgent } from './components/LiveAgent';
 import { MediaGallery, MediaItem } from './components/MediaGallery';
 import { TodoList } from './components/TodoList';
 import { ArchitectureDiagram } from './components/ArchitectureDiagram';
+import { StoryboardCreator } from './components/StoryboardCreator';
 import { gemini } from './services/gemini';
 import { cn } from './lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,6 +37,7 @@ export default function App() {
   const [moodBoard, setMoodBoard] = useState<string[]>([]);
   const [showMoodBoard, setShowMoodBoard] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [activeTab, setActiveTab] = useState<'live' | 'storyboard'>('live');
 
   // Initialization: Check API key and load theme
   useEffect(() => {
@@ -240,6 +242,49 @@ export default function App() {
           </header>
 
           <LiveAgent brandVoice={brandVoice} />
+
+          {/* Tab Bar: Live Agent / Storyboard Creator */}
+          <div className="flex p-1 bg-white/5 rounded-2xl w-full">
+            <button
+              onClick={() => setActiveTab('live')}
+              className={cn(
+                "flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                activeTab === 'live'
+                  ? "bg-glass-border text-[var(--text)] shadow-lg"
+                  : "text-text-muted hover:text-text-secondary"
+              )}
+            >
+              <Mic className="w-4 h-4" />
+              Live Agent
+            </button>
+            <button
+              onClick={() => setActiveTab('storyboard')}
+              className={cn(
+                "flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2",
+                activeTab === 'storyboard'
+                  ? "bg-glass-border text-[var(--text)] shadow-lg"
+                  : "text-text-muted hover:text-text-secondary"
+              )}
+            >
+              <BookOpen className="w-4 h-4" />
+              Storyboard
+            </button>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {activeTab === 'storyboard' && (
+              <motion.div
+                key="storyboard"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.2 }}
+                className="glass-panel p-8"
+              >
+                <StoryboardCreator brandVoice={brandVoice} />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="mt-8">
             <div className="flex items-center justify-between mb-6">

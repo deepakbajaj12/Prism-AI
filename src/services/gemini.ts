@@ -6,6 +6,11 @@ export interface ModelOutput {
   videoUrl?: string;
 }
 
+export interface StoryChunk {
+  type: 'text' | 'image';
+  content: string;
+}
+
 export class GeminiService {
   private getApiKey() {
     return process.env.API_KEY || process.env.GEMINI_API_KEY || '';
@@ -117,6 +122,54 @@ export class GeminiService {
     } catch (error) {
       console.error("Error generating brief:", error);
       return undefined;
+    }
+  }
+
+  /**
+   * Generates an interleaved storyboard: text narration + images in ONE streaming response.
+   *
+   * Uses responseModalities: [TEXT, IMAGE] with gemini-2.0-flash-preview-image-generation.
+   * This is the "Creative Storyteller" mandatory requirement — a single model call that
+   * weaves together written scene descriptions and generated visuals simultaneously.
+   *
+   * The generator yields StoryChunk objects as they arrive from the stream so the UI
+   * can render each piece the moment Gemini produces it.
+   */
+  async *generateStoryboard(prompt: string, brandVoice: string): AsyncGenerator<StoryChunk> {
+    const ai = this.getAI();
+
+    const systemPrompt = `You are Prism, an award-winning Creative Director with brand voice: "${brandVoice}".
+
+Create a cinematic 3-scene campaign storyboard for: "${prompt}"
+
+For EACH scene you MUST:
+1. Write the scene label (e.g. "SCENE 01 — HOOK") as a short header line
+2. Write a vivid 2-3 sentence description of the visual and emotional feel
+3. Generate ONE image that brings that scene to life (16:9, photorealistic or editorial style)
+
+Then write a brief "CAMPAIGN DIRECTION" paragraph that ties all scenes together.
+
+Write naturally — the text and images should flow together like a professional creative deck.`;
+
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-2.0-flash-preview-image-generation',
+      contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
+      config: {
+        responseModalities: [Modality.TEXT, Modality.IMAGE],
+        temperature: 1,
+      },
+    });
+
+    for await (const chunk of response) {
+      const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.text) {
+          yield { type: 'text', content: part.text };
+        } else if (part.inlineData?.data) {
+          const mimeType = part.inlineData.mimeType || 'image/png';
+          yield { type: 'image', content: `data:${mimeType};base64,${part.inlineData.data}` };
+        }
+      }
     }
   }
 
