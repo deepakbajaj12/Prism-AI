@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BookOpen, Sparkles, Square, RotateCcw, Download } from 'lucide-react';
 import { gemini } from '../services/gemini';
@@ -12,6 +12,9 @@ interface StoryPart {
 
 interface StoryboardCreatorProps {
   brandVoice: string;
+  /** Concept injected from voice tool call — auto-triggers generation */
+  autoConcept?: string;
+  onAutoConceptConsumed?: () => void;
 }
 
 /**
@@ -23,8 +26,15 @@ interface StoryboardCreatorProps {
  *
  * This is the mandatory "interleaved/mixed output" capability for the
  * Creative Storyteller hackathon category.
+ *
+ * autoConcept: when set by the Live Voice Agent's tool call, automatically
+ * populates the concept field and triggers generation without user input.
  */
-export const StoryboardCreator: React.FC<StoryboardCreatorProps> = ({ brandVoice }) => {
+export const StoryboardCreator: React.FC<StoryboardCreatorProps> = ({
+  brandVoice,
+  autoConcept,
+  onAutoConceptConsumed,
+}) => {
   const [concept, setConcept] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [storyParts, setStoryParts] = useState<StoryPart[]>([]);
@@ -32,8 +42,23 @@ export const StoryboardCreator: React.FC<StoryboardCreatorProps> = ({ brandVoice
   const abortRef = useRef(false);
   const outputRef = useRef<HTMLDivElement>(null);
 
-  const handleGenerate = async () => {
-    if (!concept.trim() || isGenerating) return;
+  // Auto-trigger when voice agent calls generate_storyboard tool
+  useEffect(() => {
+    if (autoConcept && autoConcept.trim() && !isGenerating) {
+      setConcept(autoConcept);
+      onAutoConceptConsumed?.();
+      // Small delay to let the tab switch animation complete
+      setTimeout(() => {
+        setStoryParts([]);
+        setError(null);
+        abortRef.current = false;
+        runGeneration(autoConcept);
+      }, 400);
+    }
+  }, [autoConcept]);
+
+  const runGeneration = async (conceptText: string) => {
+    if (!conceptText.trim() || isGenerating) return;
 
     setIsGenerating(true);
     setStoryParts([]);
@@ -41,13 +66,12 @@ export const StoryboardCreator: React.FC<StoryboardCreatorProps> = ({ brandVoice
     abortRef.current = false;
 
     try {
-      const generator = gemini.generateStoryboard(concept, brandVoice);
+      const generator = gemini.generateStoryboard(conceptText, brandVoice);
 
       for await (const chunk of generator) {
         if (abortRef.current) break;
 
         setStoryParts(prev => {
-          // For text chunks: append to the last text part if it exists, else create new
           if (chunk.type === 'text') {
             if (prev.length > 0 && prev[prev.length - 1].type === 'text') {
               const updated = [...prev];
@@ -59,14 +83,13 @@ export const StoryboardCreator: React.FC<StoryboardCreatorProps> = ({ brandVoice
             }
             return [...prev, { type: 'text', content: chunk.content }];
           }
-          // For image chunks: always append as a new image part
           return [...prev, { type: 'image', content: chunk.content }];
         });
 
-        // Auto-scroll as content streams in
         setTimeout(() => {
           outputRef.current?.scrollTo({ top: outputRef.current.scrollHeight, behavior: 'smooth' });
         }, 50);
+
       }
     } catch (err) {
       console.error('Storyboard generation failed:', err);
@@ -76,6 +99,8 @@ export const StoryboardCreator: React.FC<StoryboardCreatorProps> = ({ brandVoice
       abortRef.current = false;
     }
   };
+
+  const handleGenerate = () => runGeneration(concept);
 
   const handleStop = () => {
     abortRef.current = true;

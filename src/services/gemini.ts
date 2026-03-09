@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, LiveServerMessage, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Modality, Type, LiveServerMessage, GenerateContentResponse } from "@google/genai";
 
 export interface ModelOutput {
   text?: string;
@@ -175,7 +175,12 @@ Write naturally — the text and images should flow together like a professional
 
   /**
    * Connects to the Gemini Live API for real-time multimodal interaction.
-   * Includes guardrails to prevent hallucinations and maintain professional standards.
+   *
+   * Key upgrades:
+   * - Tool calling: Gemini can invoke generate_image / generate_storyboard / generate_brief
+   *   directly from voice, creating a true agentic voice-to-creation loop.
+   * - Barge-in: the Live API handles interruption natively; the UI listens for
+   *   serverContent.interrupted to cancel queued audio immediately.
    */
   connectLive(
     callbacks: {
@@ -193,17 +198,72 @@ Write naturally — the text and images should flow together like a professional
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } },
         },
-        systemInstruction: `You are Prism, a world-class Creative Director. Your current brand voice is: ${brandVoice}. 
-        You help users brainstorm marketing campaigns, visual concepts, and video ads. 
-        You are inspiring and highly creative. When a user asks for a visual, you should describe it vividly.
-        
-        GUARDRAILS:
-        1. If you are unsure about a specific fact or technical detail, gracefully admit it and ask for more context.
-        2. Do not hallucinate capabilities; only offer to help with creative strategy, visual descriptions, and campaign planning.
-        3. Maintain a professional yet creative tone at all times.
-        4. If a user command is ambiguous, ask for clarification before proceeding.`,
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: "generate_image",
+                description: "Generate a campaign image. Call this when the user asks to visualize, create an image, or see a visual concept.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    prompt: {
+                      type: Type.STRING,
+                      description: "Detailed visual description — include style, mood, lighting, composition.",
+                    },
+                  },
+                  required: ["prompt"],
+                },
+              },
+              {
+                name: "generate_storyboard",
+                description: "Generate an interleaved campaign storyboard with text and images. Call this when the user asks for a storyboard, campaign deck, or visual narrative.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    concept: {
+                      type: Type.STRING,
+                      description: "The campaign concept or product idea to storyboard.",
+                    },
+                  },
+                  required: ["concept"],
+                },
+              },
+              {
+                name: "generate_brief",
+                description: "Generate a professional creative brief. Call this when the user asks for a brief, strategy summary, or campaign direction document.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    concept: {
+                      type: Type.STRING,
+                      description: "The campaign concept to write a brief for.",
+                    },
+                  },
+                  required: ["concept"],
+                },
+              },
+            ],
+          },
+        ],
+        systemInstruction: `You are Prism, a world-class AI Creative Director. Brand voice: "${brandVoice}".
+
+You help users brainstorm campaigns, generate visuals, and build creative decks through natural voice conversation.
+
+TOOL USE (critical — do not skip):
+- When a user asks to "generate", "create", "visualize", "make an image", "show me", or "storyboard" anything — call the appropriate tool immediately. Do NOT just describe it verbally.
+- generate_image → single visuals, mood board frames, product shots.
+- generate_storyboard → full campaign narratives, scene sequences, creative decks.
+- generate_brief → strategy documents, campaign direction summaries.
+- After calling a tool, confirm in one brief sentence what you triggered.
+
+CONVERSATION STYLE:
+- Inspiring, concise, direct. No filler.
+- Ask clarifying questions only when intent is genuinely ambiguous.
+- Never fabricate facts — if unsure, say so.
+- Always maintain the "${brandVoice}" tone.`,
       },
     });
   }

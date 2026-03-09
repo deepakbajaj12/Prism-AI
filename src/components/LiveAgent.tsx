@@ -1,413 +1,420 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Sparkles, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Mic, MicOff, Sparkles, Loader2, Zap } from 'lucide-react';
 import { gemini } from '../services/gemini';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface LiveAgentProps {
   onVisualRequest?: (type: 'image' | 'video', prompt: string) => void;
+  onStoryboardRequest?: (concept: string) => void;
+  onBriefRequest?: (concept: string) => void;
   brandVoice?: string;
 }
 
-export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoice }) => {
-  const [isActive, setIsActive] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+const WAVEFORM_BARS = 28;
+const WAVEFORM_DECAY = 0.88;
+
+/**
+ * LiveAgent — real-time voice interface powered by Gemini Live API.
+ *
+ * Upgrades over v1:
+ * 1. Tool calling: Gemini calls generate_image / generate_storyboard / generate_brief
+ *    directly from voice, triggering actual generation in the parent.
+ * 2. Barge-in: listens for serverContent.interrupted and stops queued audio immediately.
+ * 3. Waveform visualizer: real-time RMS-driven bar chart replaces the static orb.
+ * 4. isSessionConnected ref guards all WebSocket sends against race conditions.
+ */
+export const LiveAgent: React.FC<LiveAgentProps> = ({
+  onVisualRequest,
+  onStoryboardRequest,
+  onBriefRequest,
+  brandVoice = 'Professional & Creative',
+}) => {
+  const [isActive, setIsActive]       = useState(false);
+  const [isMuted, setIsMuted]         = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [transcript, setTranscript] = useState<string>('');
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);
-  
-  const [error, setError] = useState<string | null>(null);
-  
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const sessionRef = useRef<any>(null);
-  const audioQueue = useRef<Int16Array[]>([]);
-  const isPlaying = useRef(false);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Tracks whether the WebSocket is truly open — guards onaudioprocess sends
-  const isSessionConnected = useRef(false);
+  const [transcript, setTranscript]   = useState('');
+  const [isSpeaking, setIsSpeaking]   = useState(false);
+  const [isThinking, setIsThinking]   = useState(false);
+  const [toolFlash, setToolFlash]     = useState<string | null>(null);
+  const [error, setError]             = useState<string | null>(null);
 
-  const nextStartTimeRef = useRef<number>(0);
+  // Audio refs
+  const audioContextRef     = useRef<AudioContext | null>(null);
+  const processorRef        = useRef<ScriptProcessorNode | null>(null);
+  const sessionRef          = useRef<any>(null);
+  const isSessionConnected  = useRef(false);
+  const nextStartTimeRef    = useRef(0);
+  const activeSourcesRef    = useRef<AudioBufferSourceNode[]>([]);
 
-  /**
-   * Initializes the Gemini Live session with error handling and automatic cleanup.
-   */
+  // Timers
+  const reconnectTimerRef  = useRef<NodeJS.Timeout | null>(null);
+  const silenceTimerRef    = useRef<NodeJS.Timeout | null>(null);
+  const speakingTimerRef   = useRef<NodeJS.Timeout | null>(null);
+
+  // Waveform: ring buffer of RMS values
+  const waveformRef = useRef<number[]>(new Array(WAVEFORM_BARS).fill(0));
+  const [waveform, setWaveform] = useState<number[]>(new Array(WAVEFORM_BARS).fill(0));
+  const waveformAnimRef = useRef<number | null>(null);
+
+  // ── Playback helpers ──────────────────────────────────────────────────────
+
+  /** Cancel all scheduled audio immediately (barge-in support). */
+  const stopPlayback = useCallback(() => {
+    activeSourcesRef.current.forEach(src => { try { src.stop(); } catch {} });
+    activeSourcesRef.current = [];
+    nextStartTimeRef.current = 0;
+    setIsSpeaking(false);
+    if (speakingTimerRef.current) { clearTimeout(speakingTimerRef.current); }
+  }, []);
+
+  /** Schedule a 16-bit PCM chunk for gapless Web Audio playback at 24kHz. */
+  const schedulePlayback = useCallback((pcmData: Int16Array) => {
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+    }
+    const ctx = audioContextRef.current;
+
+    const floatData = new Float32Array(pcmData.length);
+    for (let i = 0; i < pcmData.length; i++) floatData[i] = pcmData[i] / 0x7fff;
+
+    const buffer = ctx.createBuffer(1, floatData.length, 24000);
+    buffer.getChannelData(0).set(floatData);
+
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    src.onended = () => {
+      activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== src);
+    };
+
+    const now = ctx.currentTime;
+    if (nextStartTimeRef.current < now) nextStartTimeRef.current = now + 0.04;
+    src.start(nextStartTimeRef.current);
+    nextStartTimeRef.current += buffer.duration;
+    activeSourcesRef.current.push(src);
+
+    setIsSpeaking(true);
+    if (speakingTimerRef.current) clearTimeout(speakingTimerRef.current);
+    speakingTimerRef.current = setTimeout(() => {
+      if (ctx.currentTime >= nextStartTimeRef.current - 0.1) setIsSpeaking(false);
+    }, (nextStartTimeRef.current - now) * 1000 + 100);
+  }, []);
+
+  // ── Waveform animation loop ───────────────────────────────────────────────
+
+  const startWaveformLoop = useCallback(() => {
+    const tick = () => {
+      waveformRef.current = waveformRef.current.map(v => v * WAVEFORM_DECAY);
+      setWaveform([...waveformRef.current]);
+      waveformAnimRef.current = requestAnimationFrame(tick);
+    };
+    waveformAnimRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const stopWaveformLoop = useCallback(() => {
+    if (waveformAnimRef.current) cancelAnimationFrame(waveformAnimRef.current);
+    waveformRef.current = new Array(WAVEFORM_BARS).fill(0);
+    setWaveform(new Array(WAVEFORM_BARS).fill(0));
+  }, []);
+
+  // ── Tool call handler ─────────────────────────────────────────────────────
+
+  const handleToolCall = useCallback((toolCall: any) => {
+    for (const fn of toolCall.functionCalls ?? []) {
+      const args = fn.args ?? {};
+
+      if (fn.name === 'generate_image') {
+        setToolFlash('Generating image…');
+        onVisualRequest?.('image', args.prompt ?? '');
+      } else if (fn.name === 'generate_storyboard') {
+        setToolFlash('Generating storyboard…');
+        onStoryboardRequest?.(args.concept ?? '');
+      } else if (fn.name === 'generate_brief') {
+        setToolFlash('Drafting brief…');
+        onBriefRequest?.(args.concept ?? '');
+      }
+
+      setTimeout(() => setToolFlash(null), 3000);
+
+      // Send tool response so Gemini can continue
+      try {
+        sessionRef.current?.sendToolResponse?.({
+          functionResponses: [{ id: fn.id, response: { result: 'started' } }],
+        });
+      } catch {}
+    }
+  }, [onVisualRequest, onStoryboardRequest, onBriefRequest]);
+
+  // ── Session lifecycle ─────────────────────────────────────────────────────
+
   const startSession = async () => {
     setIsConnecting(true);
     setError(null);
-    
-    try {
-      // Connect to the Gemini Live API via our service wrapper
-      const session = await gemini.connectLive({
-        onopen: () => {
-          isSessionConnected.current = true;
-          setIsConnecting(false);
-          setIsActive(true);
-          setupAudioCapture().catch(err => {
-            console.error("Microphone access failed:", err);
-            setError("Microphone access denied. Please check your permissions.");
-            stopSession();
-          });
-        },
-        onmessage: async (message) => {
-          setIsThinking(false);
-          
-          // GUARDRAIL: Handle incoming audio data (PCM 16-bit, 24kHz)
-          // We decode and schedule immediately for low-latency response
-          if (message.serverContent?.modelTurn?.parts[0]?.inlineData?.data) {
-            try {
-              const base64Audio = message.serverContent.modelTurn.parts[0].inlineData.data;
-              const binaryString = atob(base64Audio);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              const pcmData = new Int16Array(bytes.buffer);
-              schedulePlayback(pcmData);
-            } catch (err) {
-              console.error("Audio decoding error:", err);
-            }
-          }
+    setTranscript('');
 
-          // Handle incoming text transcriptions
-          if (message.serverContent?.modelTurn?.parts[0]?.text) {
-            const text = message.serverContent.modelTurn.parts[0].text;
-            setTranscript(prev => prev + ' ' + text);
-          }
+    try {
+      const session = await gemini.connectLive(
+        {
+          onopen: () => {
+            isSessionConnected.current = true;
+            setIsConnecting(false);
+            setIsActive(true);
+            startWaveformLoop();
+            setupAudioCapture().catch(err => {
+              console.error('Mic access failed:', err);
+              setError('Microphone access denied. Check your browser permissions.');
+              stopSession();
+            });
+          },
+          onmessage: async (message: any) => {
+            // ── Barge-in: model was interrupted by user speech ──────────────
+            if (message.serverContent?.interrupted) {
+              stopPlayback();
+              setIsThinking(false);
+              return;
+            }
+
+            setIsThinking(false);
+
+            // ── Incoming audio from Gemini ──────────────────────────────────
+            const inlineData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData;
+            if (inlineData?.data) {
+              try {
+                const bytes = Uint8Array.from(atob(inlineData.data), c => c.charCodeAt(0));
+                schedulePlayback(new Int16Array(bytes.buffer));
+              } catch {}
+            }
+
+            // ── Text transcription ──────────────────────────────────────────
+            const text = message.serverContent?.modelTurn?.parts?.[0]?.text;
+            if (text) setTranscript(prev => prev + ' ' + text);
+
+            // ── Tool calls (voice → generation) ────────────────────────────
+            if (message.toolCall) handleToolCall(message.toolCall);
+          },
+          onerror: (err: any) => {
+            console.error('Live API error:', err);
+            isSessionConnected.current = false;
+            setError('Connection lost — retrying…');
+            reconnectTimerRef.current = setTimeout(startSession, 3500);
+          },
+          onclose: () => {
+            isSessionConnected.current = false;
+            stopPlayback();
+            if (isActive) stopSession();
+          },
         },
-        onerror: (err) => {
-          console.error("Live API Error:", err);
-          isSessionConnected.current = false;
-          setError("Connection lost. Attempting to reconnect...");
-          
-          // Implement simple reconnection logic
-          if (isActive) {
-            reconnectTimeoutRef.current = setTimeout(() => {
-              startSession();
-            }, 3000);
-          }
-        },
-        onclose: () => {
-          console.log("Live session closed.");
-          if (isActive && !error) {
-            stopSession();
-          }
-        }
-      }, brandVoice);
+        brandVoice
+      );
       sessionRef.current = session;
     } catch (err) {
-      console.error("Failed to connect to Live API:", err);
+      console.error('Failed to connect:', err);
       setIsConnecting(false);
-      setError("Failed to establish connection. Please try again.");
+      setError('Connection failed. Check your API key and try again.');
     }
   };
 
-  /**
-   * Gracefully shuts down the session and cleans up all hardware resources.
-   */
   const stopSession = () => {
     isSessionConnected.current = false;
     setIsActive(false);
+    setIsThinking(false);
+    setIsSpeaking(false);
     setError(null);
-    
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-    
-    if (sessionRef.current) {
-      sessionRef.current.close();
-      sessionRef.current = null;
-    }
-    
-    // Disconnect audio processor to stop microphone stream
+
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    if (silenceTimerRef.current)   clearTimeout(silenceTimerRef.current);
+    if (speakingTimerRef.current)  clearTimeout(speakingTimerRef.current);
+
+    stopPlayback();
+    stopWaveformLoop();
+
+    try { sessionRef.current?.close(); } catch {}
+    sessionRef.current = null;
+
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current = null;
     }
-    
-    // Close the audio context to free up system resources
     if (audioContextRef.current) {
-      audioContextRef.current.close();
+      audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-    
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-    
-    audioQueue.current = [];
-    isPlaying.current = false;
+
     nextStartTimeRef.current = 0;
-    setIsThinking(false);
   };
 
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // ── Microphone capture ────────────────────────────────────────────────────
 
-  /**
-   * Schedules PCM audio chunks for gapless playback using the Web Audio API.
-   * This is critical for real-time voice interaction to avoid stuttering.
-   * 1. Converts 16-bit PCM to Float32.
-   * 2. Uses a lookahead buffer (nextStartTimeRef) to sequence chunks.
-   */
-  const schedulePlayback = (pcmData: Int16Array) => {
-    setIsThinking(false);
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-    }
-
-    // Convert 16-bit PCM to Float32 for Web Audio
-    const floatData = new Float32Array(pcmData.length);
-    for (let i = 0; i < pcmData.length; i++) {
-      floatData[i] = pcmData[i] / 0x7FFF;
-    }
-
-    const buffer = audioContextRef.current.createBuffer(1, floatData.length, 24000);
-    buffer.getChannelData(0).set(floatData);
-    
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioContextRef.current.destination);
-
-    const currentTime = audioContextRef.current.currentTime;
-    
-    // Ensure chunks are played sequentially without gaps
-    if (nextStartTimeRef.current < currentTime) {
-      nextStartTimeRef.current = currentTime + 0.05;
-    }
-
-    source.start(nextStartTimeRef.current);
-    nextStartTimeRef.current += buffer.duration;
-    
-    setIsSpeaking(true);
-    
-    const timeoutId = setTimeout(() => {
-      if (audioContextRef.current && audioContextRef.current.currentTime >= nextStartTimeRef.current - 0.1) {
-        setIsSpeaking(false);
-      }
-    }, (nextStartTimeRef.current - currentTime) * 1000);
-
-    return () => clearTimeout(timeoutId);
-  };
-
-  /**
-   * Captures microphone input and streams it to the Gemini Live API.
-   * Uses ScriptProcessorNode for raw PCM access (16kHz, mono).
-   * Implements custom Voice Activity Detection (VAD) to manage "Thinking" state.
-   */
   const setupAudioCapture = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      } 
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
-    
-    audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-    const source = audioContextRef.current.createMediaStreamSource(stream);
-    
-    // Using a 2048 buffer size for a balance between latency and performance
-    processorRef.current = audioContextRef.current.createScriptProcessor(2048, 1, 1);
+
+    // Separate AudioContext for mic (16kHz) — playback uses 24kHz context
+    const micCtx = new AudioContext({ sampleRate: 16000 });
+    audioContextRef.current = micCtx;
+    const source = micCtx.createMediaStreamSource(stream);
+    processorRef.current = micCtx.createScriptProcessor(2048, 1, 1);
 
     processorRef.current.onaudioprocess = (e) => {
-      if (isMuted || !sessionRef.current || !isSessionConnected.current) return;
-      const inputData = e.inputBuffer.getChannelData(0);
-      
-      // Simple VAD (Voice Activity Detection) based on RMS
+      if (isMuted || !isSessionConnected.current || !sessionRef.current) return;
+
+      const input = e.inputBuffer.getChannelData(0);
+
+      // ── VAD: RMS energy ──────────────────────────────────────────────────
       let sum = 0;
-      for (let i = 0; i < inputData.length; i++) {
-        sum += inputData[i] * inputData[i];
-      }
-      const rms = Math.sqrt(sum / inputData.length);
-      
+      for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+      const rms = Math.sqrt(sum / input.length);
+
+      // Update waveform ring buffer
+      waveformRef.current = [
+        ...waveformRef.current.slice(1),
+        Math.min(1, rms * 12),
+      ];
+
       if (rms > 0.01) {
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = null;
-        }
+        if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
         setIsThinking(false);
-      } else {
-        // Trigger "Thinking" state after 1.5s of silence
-        if (!silenceTimerRef.current && !isSpeaking && isActive) {
-          silenceTimerRef.current = setTimeout(() => {
-            if (!isSpeaking && isActive) setIsThinking(true);
-          }, 1500);
-        }
+      } else if (!silenceTimerRef.current && !isSpeaking) {
+        silenceTimerRef.current = setTimeout(() => {
+          setIsThinking(true);
+        }, 1500);
       }
 
-      // Convert Float32 back to 16-bit PCM for the API
-      const pcmData = new Int16Array(inputData.length);
-      for (let i = 0; i < inputData.length; i++) {
-        pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-      }
-      
-      const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+      // ── Stream PCM to API ────────────────────────────────────────────────
+      const pcm = new Int16Array(input.length);
+      for (let i = 0; i < input.length; i++) pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7fff;
+
       try {
         sessionRef.current.sendRealtimeInput({
-          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+          media: { data: btoa(String.fromCharCode(...new Uint8Array(pcm.buffer))), mimeType: 'audio/pcm;rate=16000' },
         });
       } catch {
-        // WebSocket may have closed between the guard check and the send — safe to ignore
         isSessionConnected.current = false;
       }
     };
 
     source.connect(processorRef.current);
-    processorRef.current.connect(audioContextRef.current.destination);
+    processorRef.current.connect(micCtx.destination);
   };
+
+  useEffect(() => () => stopSession(), []);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const orbActive   = cn('w-36 h-36 rounded-full flex items-center justify-center relative transition-all duration-500 border-2',
+    isActive ? 'border-brand-primary shadow-[0_0_40px_rgba(129,140,248,0.25)] bg-brand-primary/5' : 'border-white/10 hover:border-white/20 bg-white/3');
 
   return (
     <div className="flex flex-col items-center gap-8 w-full max-w-2xl mx-auto">
-      <div className="relative group">
-        {/* Outer Aura Layers */}
-        <AnimatePresence>
-          {isActive && (
-            <>
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ 
-                  opacity: [0.1, 0.3, 0.1], 
-                  scale: [1, 1.2, 1],
-                  rotate: 360 
-                }}
-                transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-[-20px] rounded-full border border-brand-primary/20 blur-sm"
-              />
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ 
-                  opacity: [0.05, 0.15, 0.05], 
-                  scale: [1.1, 1.3, 1.1],
-                  rotate: -360 
-                }}
-                transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-[-40px] rounded-full border border-white/5 blur-md"
-              />
-            </>
-          )}
-        </AnimatePresence>
 
-        <div className={cn(
-          "w-48 h-48 rounded-full flex items-center justify-center transition-all duration-700 relative z-10",
-          isActive ? "bg-brand-primary/10 scale-110 shadow-[0_0_80px_rgba(255,78,0,0.15)]" : "bg-white/5 hover:bg-white/10",
-          isSpeaking && "shadow-[0_0_100px_rgba(255,78,0,0.4)]"
-        )}>
-          {/* Internal Pulse Ring */}
-          <AnimatePresence>
-            {isSpeaking && (
-              <motion.div 
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1.5, opacity: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
-                className="absolute inset-0 rounded-full border-2 border-brand-primary/50"
-              />
-            )}
-          </AnimatePresence>
+      {/* ── Orb with waveform ── */}
+      <div className="relative flex items-center justify-center w-56 h-56">
 
-          <div className={cn(
-            "w-32 h-32 rounded-full flex items-center justify-center border-2 transition-all duration-500 relative bg-[var(--bg)]",
-            isActive ? "border-brand-primary shadow-inner shadow-brand-primary/20" : "border-white/20"
-          )}>
-            {isConnecting ? (
-              <div className="relative flex items-center justify-center">
-                <Loader2 className="w-12 h-12 text-brand-primary animate-spin" />
-                <motion.div 
-                  animate={{ 
-                    scale: [1, 1.5, 1],
-                    opacity: [0.2, 0.5, 0.2] 
+        {/* Outer live-ring pulses */}
+        {isActive && (
+          <>
+            <div className="absolute inset-0 rounded-full border border-brand-primary/20 live-ring" style={{ animationDelay: '0s' }} />
+            <div className="absolute inset-[-16px] rounded-full border border-brand-secondary/10 live-ring" style={{ animationDelay: '0.5s' }} />
+          </>
+        )}
+
+        {/* Waveform bars (ring around orb) */}
+        {isActive && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="flex items-center gap-[3px]">
+              {waveform.map((v, i) => (
+                <div
+                  key={i}
+                  className="waveform-bar"
+                  style={{
+                    height: `${8 + v * 48}px`,
+                    opacity: 0.4 + v * 0.6,
                   }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="absolute inset-0 blur-2xl bg-brand-primary/40 rounded-full"
                 />
-                <div className="absolute -inset-4 border border-brand-primary/20 rounded-full animate-[spin_3s_linear_infinite]" />
-              </div>
-            ) : isActive ? (
-              <div className="relative">
-                <AnimatePresence>
-                  {isThinking && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute inset-0 flex items-center justify-center"
-                    >
-                      {[...Array(3)].map((_, i) => (
-                        <motion.div
-                          key={i}
-                          animate={{ 
-                            scale: [1, 2, 1],
-                            opacity: [0.1, 0.3, 0.1],
-                            rotate: [0, 180, 360]
-                          }}
-                          transition={{ 
-                            duration: 3, 
-                            repeat: Infinity, 
-                            delay: i * 0.5,
-                            ease: "easeInOut" 
-                          }}
-                          className="absolute w-full h-full border border-brand-primary/30 rounded-full"
-                        />
-                      ))}
-                      <motion.div 
-                        animate={{ 
-                          scale: [1, 1.2, 1],
-                          opacity: [0.3, 0.6, 0.3] 
-                        }}
-                        transition={{ duration: 1, repeat: Infinity }}
-                        className="absolute inset-0 blur-xl bg-brand-primary/30 rounded-full"
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                <motion.div
-                  animate={isSpeaking ? { scale: [1, 1.2, 1] } : {}}
-                  transition={{ duration: 0.5, repeat: Infinity }}
-                >
-                  <Sparkles className={cn("w-12 h-12 text-brand-primary", isSpeaking && "drop-shadow-[0_0_10px_rgba(255,78,0,0.8)]")} />
-                </motion.div>
-              </div>
-            ) : (
-              <Mic className="w-12 h-12 text-text-muted group-hover:text-text-secondary transition-colors" />
-            )}
+              ))}
+            </div>
           </div>
-          
+        )}
+
+        {/* Core orb */}
+        <div className={orbActive}>
+          {isConnecting ? (
+            <Loader2 className="w-10 h-10 text-brand-primary animate-spin" />
+          ) : isActive ? (
+            <div className="relative flex items-center justify-center">
+              <AnimatePresence>
+                {isThinking && (
+                  <motion.div
+                    key="thinking"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0.3, 0.8, 0.3] }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 1.2, repeat: Infinity }}
+                    className="absolute inset-0 rounded-full bg-brand-primary/20 blur-md"
+                  />
+                )}
+              </AnimatePresence>
+              <motion.div
+                animate={isSpeaking ? { scale: [1, 1.15, 1] } : {}}
+                transition={{ duration: 0.4, repeat: Infinity }}
+              >
+                <Sparkles className={cn('w-10 h-10 text-brand-primary', isSpeaking && 'drop-shadow-[0_0_12px_rgba(129,140,248,0.9)]')} />
+              </motion.div>
+            </div>
+          ) : (
+            <Mic className="w-10 h-10 text-text-muted group-hover:text-text-secondary transition-colors" />
+          )}
+
+          {/* Live dot */}
           {isActive && (
-            <div className="absolute -top-2 -right-2 flex items-center justify-center">
-              <div className="w-6 h-6 bg-brand-primary rounded-full animate-ping opacity-75" />
-              <div className="absolute w-3 h-3 bg-brand-primary rounded-full" />
+            <div className="absolute -top-1 -right-1 flex items-center justify-center">
+              <div className="w-4 h-4 bg-brand-secondary rounded-full animate-ping opacity-70" />
+              <div className="absolute w-2 h-2 bg-brand-secondary rounded-full" />
             </div>
           )}
         </div>
       </div>
 
+      {/* ── Status / error ── */}
       <AnimatePresence>
         {error && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            key="error"
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="w-full bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-500 text-sm text-center flex items-center justify-center gap-2"
+            exit={{ opacity: 0, y: -8 }}
+            className="w-full bg-red-500/10 border border-red-500/20 rounded-2xl p-4 text-red-400 text-sm text-center"
           >
-            <Loader2 className="w-4 h-4 animate-spin" />
             {error}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="flex gap-4 relative z-20">
+      {/* ── Tool call flash badge ── */}
+      <AnimatePresence>
+        {toolFlash && (
+          <motion.div
+            key="tool"
+            initial={{ opacity: 0, scale: 0.9, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-primary/15 border border-brand-primary/30 rounded-full tool-flash"
+          >
+            <Zap className="w-3.5 h-3.5 text-brand-primary" />
+            <span className="text-xs font-mono text-brand-primary uppercase tracking-widest">{toolFlash}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Controls ── */}
+      <div className="flex gap-4">
         {!isActive ? (
           <button
             onClick={startSession}
             disabled={isConnecting}
-            className="px-8 py-3 bg-brand-primary hover:bg-brand-primary/90 disabled:opacity-50 text-white font-semibold rounded-full transition-all flex items-center gap-2 shadow-lg shadow-brand-primary/20"
+            className="px-8 py-3 bg-brand-primary hover:bg-brand-primary/85 disabled:opacity-50 text-white font-semibold rounded-full transition-all flex items-center gap-2 shadow-lg shadow-brand-primary/20"
           >
             <Mic className="w-5 h-5" />
             Start Creative Session
@@ -415,17 +422,18 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
         ) : (
           <>
             <button
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={() => setIsMuted(m => !m)}
+              title={isMuted ? 'Unmute' : 'Mute'}
               className={cn(
-                "p-4 rounded-full transition-all",
-                isMuted ? "bg-red-500/20 text-red-500" : "bg-white/10 text-white hover:bg-white/20"
+                'p-4 rounded-full transition-all',
+                isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-white/8 hover:bg-white/15 text-white border border-white/10'
               )}
             >
-              {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              <MicOff className="w-5 h-5" />
             </button>
             <button
               onClick={stopSession}
-              className="px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-full transition-all"
+              className="px-8 py-3 bg-white/8 hover:bg-white/15 border border-white/10 text-white font-semibold rounded-full transition-all"
             >
               End Session
             </button>
@@ -433,23 +441,26 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
         )}
       </div>
 
+      {/* ── Transcript panel ── */}
       <AnimatePresence>
         {isActive && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="w-full glass-panel p-6 min-h-[100px] flex flex-col gap-2"
+            exit={{ opacity: 0, y: 16 }}
+            className="w-full glass-panel p-6 min-h-[90px]"
           >
-            <span className="text-[10px] uppercase tracking-widest text-text-muted font-mono">Real-time Insight</span>
-            <p className="text-text-secondary italic leading-relaxed flex items-center gap-2">
-              {isThinking && <Loader2 className="w-3 h-3 animate-spin text-brand-primary" />}
-              <motion.span
-                animate={isThinking ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              >
-                {transcript || "Listening to your creative vision..."}
-              </motion.span>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-secondary animate-pulse" />
+              <span className="text-[9px] uppercase tracking-[0.25em] text-text-muted font-mono">Live Transcript</span>
+              {isThinking && (
+                <span className="ml-auto text-[9px] uppercase tracking-[0.2em] font-mono text-brand-primary animate-pulse">
+                  thinking…
+                </span>
+              )}
+            </div>
+            <p className="text-text-secondary text-sm italic leading-relaxed">
+              {transcript || 'Listening to your creative vision…'}
             </p>
           </motion.div>
         )}

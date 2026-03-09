@@ -38,6 +38,8 @@ export default function App() {
   const [showMoodBoard, setShowMoodBoard] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [activeTab, setActiveTab] = useState<'live' | 'storyboard'>('live');
+  // Set by voice tool calls to auto-trigger storyboard generation
+  const [voiceStoryboardConcept, setVoiceStoryboardConcept] = useState<string | undefined>(undefined);
 
   // Initialization: Check API key and load theme
   useEffect(() => {
@@ -241,7 +243,15 @@ export default function App() {
             </motion.p>
           </header>
 
-          <LiveAgent brandVoice={brandVoice} />
+          <LiveAgent
+            brandVoice={brandVoice}
+            onVisualRequest={(type, prompt) => handleGenerate(type, prompt)}
+            onStoryboardRequest={(concept) => {
+              setActiveTab('storyboard');
+              setVoiceStoryboardConcept(concept);
+            }}
+            onBriefRequest={(concept) => handleGenerateBrief(concept)}
+          />
 
           {/* Tab Bar: Live Agent / Storyboard Creator */}
           <div className="flex p-1 bg-white/5 rounded-2xl w-full">
@@ -281,7 +291,11 @@ export default function App() {
                 transition={{ duration: 0.2 }}
                 className="glass-panel p-8"
               >
-                <StoryboardCreator brandVoice={brandVoice} />
+                <StoryboardCreator
+                  brandVoice={brandVoice}
+                  autoConcept={voiceStoryboardConcept}
+                  onAutoConceptConsumed={() => setVoiceStoryboardConcept(undefined)}
+                />
               </motion.div>
             )}
           </AnimatePresence>
