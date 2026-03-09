@@ -25,6 +25,8 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
   const audioQueue = useRef<Int16Array[]>([]);
   const isPlaying = useRef(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Tracks whether the WebSocket is truly open — guards onaudioprocess sends
+  const isSessionConnected = useRef(false);
 
   const nextStartTimeRef = useRef<number>(0);
 
@@ -39,6 +41,7 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
       // Connect to the Gemini Live API via our service wrapper
       const session = await gemini.connectLive({
         onopen: () => {
+          isSessionConnected.current = true;
           setIsConnecting(false);
           setIsActive(true);
           setupAudioCapture().catch(err => {
@@ -75,6 +78,7 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
         },
         onerror: (err) => {
           console.error("Live API Error:", err);
+          isSessionConnected.current = false;
           setError("Connection lost. Attempting to reconnect...");
           
           // Implement simple reconnection logic
@@ -103,6 +107,7 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
    * Gracefully shuts down the session and cleans up all hardware resources.
    */
   const stopSession = () => {
+    isSessionConnected.current = false;
     setIsActive(false);
     setError(null);
     
@@ -212,7 +217,7 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
     processorRef.current = audioContextRef.current.createScriptProcessor(2048, 1, 1);
 
     processorRef.current.onaudioprocess = (e) => {
-      if (isMuted || !sessionRef.current) return;
+      if (isMuted || !sessionRef.current || !isSessionConnected.current) return;
       const inputData = e.inputBuffer.getChannelData(0);
       
       // Simple VAD (Voice Activity Detection) based on RMS
@@ -244,9 +249,14 @@ export const LiveAgent: React.FC<LiveAgentProps> = ({ onVisualRequest, brandVoic
       }
       
       const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
-      sessionRef.current.sendRealtimeInput({
-        media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-      });
+      try {
+        sessionRef.current.sendRealtimeInput({
+          media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+        });
+      } catch {
+        // WebSocket may have closed between the guard check and the send — safe to ignore
+        isSessionConnected.current = false;
+      }
     };
 
     source.connect(processorRef.current);
