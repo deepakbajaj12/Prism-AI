@@ -1,0 +1,5 @@
+{
+  "name": "Prism AI: Creative Director",
+  "description": "A real-time multimodal creative partner that brainstorms, visualizes, and generates video concepts using Gemini Live API and GenMedia.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
